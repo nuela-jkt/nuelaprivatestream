@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Akses Streaming Pribadi</title>
-    <!-- Masukkan SDK Firebase Realtime Database -->
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
     <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
@@ -31,7 +30,7 @@
     </div>
 
     <script>
-        // CONFIGURASI FIREBASE (Ganti URL dengan kepunyaanmu dari Langkah 1)
+        // CONFIGURASI FIREBASE
         const firebaseConfig = {
             databaseURL: "https://stream-nuela-default-rtdb.asia-southeast1.firebasedatabase.app/"
         };
@@ -41,12 +40,12 @@
         // DAFTAR TOKEN
         const TOKEN_ADMIN = "admin_123*";      
         const TOKEN_VIEWER = "JKT480102";       
-        const BATAS_MAKSIMAL = 50; // Batasan limit penggunaan token penonton
+        const BATAS_MAKSIMAL = 50; 
         const PEER_ADMIN_ID = "ekin-private-screen-room-xyz123";
 
         let kuotaSaatIni = 0;
 
-        // Monitor jumlah kuota terpakai secara real-time langsung dari Firebase
+        // Monitor jumlah kuota terpakai secara real-time
         database.ref('kuota_terpakai').on('value', (snapshot) => {
             kuotaSaatIni = snapshot.val() || 0;
             document.getElementById("kuotaSisa").innerText = `Kuota terpakai: ${kuotaSaatIni}/${BATAS_MAKSIMAL} penonton`;
@@ -63,15 +62,12 @@
             const inputUser = document.getElementById("tokenInput").value.trim();
 
             if (inputUser === TOKEN_ADMIN) {
-                // Admin (Ekin) bebas masuk kapan saja tanpa memotong kuota
                 localStorage.setItem("status_login", inputUser);
                 window.location.href = "stream.html";
             } else if (inputUser === TOKEN_VIEWER) {
-                // Jalankan pengecekan kuota di database untuk Penonton biasa
                 if (kuotaSaatIni >= BATAS_MAKSIMAL) {
-                    alert("Akses Ditolak! Token ini sudah mencapai batas maksimal penggunaan (50 Orang).");
+                    alert("Akses Ditolak! Token ini sudah mencapai batas maksimal penggunaan.");
                 } else {
-                    // Jika kuota masih ada, tambahkan angka terpakai di Firebase sebanyak +1
                     database.ref('kuota_terpakai').set(kuotaSaatIni + 1)
                     .then(() => {
                         localStorage.setItem("status_login", inputUser);
