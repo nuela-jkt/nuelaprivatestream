@@ -27,7 +27,6 @@
     <div class="container">
         <span class="status-badge">LIVE STREAM</span>
         
-        <!-- Panel Kontrol Khusus Admin -->
         <div id="adminControls">
             <p style="color: #10b981; font-weight: bold; margin-bottom: 10px;">Mode Broadcaster Aktif</p>
             <button class="btn-stream" onclick="mulaiMembagikanLayar()">Mulai Share Screen Laptop</button>
@@ -35,7 +34,6 @@
 
         <h1 id="streamTitle">Menunggu Siaran...</h1>
         <div class="video-wrapper">
-            <!-- Menambahkan properti autoplay, playsinline, dan muted agar tidak diblokir Chrome HP -->
             <video id="videoPlayer" autoplay playsinline muted controls></video>
         </div>
 
@@ -66,13 +64,11 @@
                 
                 peer = new Peer(PEER_ADMIN_ID);
                 
-                // Jika ada penonton masuk belakangan, langsung otomatis kirim gambar video laptop ke mereka
                 peer.on('call', (call) => {
                     daftarKoneksiViewer.push(call);
                     if (localStream) { 
                         call.answer(localStream); 
                     } else {
-                        // Jika admin belum klik tombol ijo, jawab pakai stream kosong dulu biar koneksi ga putus
                         call.answer(new MediaStream());
                     }
                 });
@@ -98,12 +94,10 @@
             call.on('stream', (remoteStream) => {
                 const videoElement = document.getElementById("videoPlayer");
                 
-                // Cek apakah stream-nya valid dan punya track video aktif
                 if (remoteStream && remoteStream.getVideoTracks().length > 0) {
                     document.getElementById("streamTitle").innerText = "🔴 Live Streaming Sedang Berlangsung";
                     videoElement.srcObject = remoteStream;
                     
-                    // Paksa mainkan video (mengatasi proteksi Chrome Mobile)
                     videoElement.play().catch(e => {
                         console.log("Autoplay ditahan, menunggu ketukan user.");
                     });
@@ -122,10 +116,8 @@
                 videoElement.srcObject = localStream;
                 videoElement.muted = true; 
 
-                // Jika ada penonton yang sudah stand-by duluan di room sebelum admin klik tombol,
-                // paksa panggil/alihkan video laptop ke semua penonton tersebut
                 if(daftarKoneksiViewer.length > 0) {
-                    window.location.reload(); // Refresh sisi admin untuk menyegarkan frekuensi broadcast
+                    window.location.reload(); 
                 }
 
                 alert("Layar berhasil dibagikan! Silakan suruh penonton buka/refresh link di HP mereka.");
