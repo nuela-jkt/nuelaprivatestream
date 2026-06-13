@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Streaming Room</title>
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b0f19; color: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .container { width: 100%; max-width: 900px; background: #111827; border: 1px solid #1f2937; border-radius: 16px; padding: 30px; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); text-align: center; }
+        h1 { font-size: 24px; margin-bottom: 20px; color: #3b82f6; }
+        .video-wrapper { position: relative; background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 16/9; margin-top: 20px; border: 1px solid #374151; }
+        video { width: 100%; height: 100%; object-fit: contain; }
+        
+        /* Panel Admin */
+        #adminControls { display: none; margin-bottom: 20px; padding: 15px; background: rgba(16, 185, 129, 0.1); border: 1px dashed #10b981; border-radius: 8px; }
+        .btn-stream { background: #10b981; color: white; padding: 10px 25px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
+        .btn-stream:hover { background: #059669; }
+        
+        .btn-logout { background: #374151; color: white; padding: 6px 15px; font-size: 12px; margin-top: 20px; border: 1px solid #4b5563; border-radius: 6px; cursor: pointer; }
+        .btn-logout:hover { background: #ef4444; }
+        .status-badge { display: inline-block; padding: 4px 12px; background: #ef4444; color: white; border-radius: 20px; font-size: 12px; font-weight: bold; margin-bottom: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <span class="status-badge">LIVE STREAM</span>
+        
+        <!-- Panel Kontrol Khusus Admin -->
+        <div id="adminControls">
+            <p style="color: #10b981; font-weight: bold; margin-bottom: 10px;">Mode Broadcaster Aktif</p>
+            <button class="btn-stream" onclick="mulaiMembagikanLayar()">Mulai Share Screen Laptop</button>
+        </div>
+
+        <h1 id="streamTitle">Menunggu Siaran...</h1>
+        <div class="video-wrapper">
+            <video id="videoPlayer" autoplay playsinline controls></video>
+        </div>
+
+        <br>
+        <button class="btn-logout" onclick="logoutSistem()">Keluar / Ganti Token</button>
+    </div>
+
+    <script>
+        const TOKEN_ADMIN = "EKIN_HOST_99";      
+        const TOKEN_VIEWER = "NONTON_YUK";       
+        const PEER_ADMIN_ID = "ekin-private-screen-room-xyz123"; 
+
+        let peer;
+        let localStream;
+
+        window.onload = function() {
+            const tokenTersimpan = localStorage.getItem("status_login");
+            
+            // KEAMANAN: Kalau belum login tapi maksa buka stream.html, tendang balik ke index.html
+            if (!tokenTersimpan) {
+                window.location.href = "index.html";
+                return;
+            }
+
+            // Jalankan setup stream berdasarkan token yang terbaca
+            if (tokenTersimpan === TOKEN_ADMIN) {
+                document.getElementById("adminControls").style.display = "block";
+                document.getElementById("streamTitle").innerText = "Panel Penyiaran Layar";
+                
+                peer = new Peer(PEER_ADMIN_ID);
+                peer.on('call', (call) => {
+                    if (localStream) { call.answer(localStream); }
+                });
+            } else if (tokenTersimpan === TOKEN_VIEWER) {
+                document.getElementById("adminControls").style.display = "none";
+                document.getElementById("streamTitle").innerText = "Streaming Layar Laptop";
+
+                peer = new Peer();
+                peer.on('open', (id) => {
+                    const call = peer.call(PEER_ADMIN_ID, new MediaStream());
+                    call.on('stream', (remoteStream) => {
+                        const videoElement = document.getElementById("videoPlayer");
+                        videoElement.srcObject = remoteStream;
+                    });
+                });
+            }
+        };
+
+        async function mulaiMembagikanLayar() {
+            try {
+                localStream = await navigator.mediaDevices.getDisplayMedia({
+                    video: { cursor: "always" },
+                    audio: true
+                });
+                const videoElement = document.getElementById("videoPlayer");
+                videoElement.srcObject = localStream;
+                videoElement.muted = true; 
+                alert("Layar berhasil dibagikan!");
+            } catch (err) {
+                alert("Gagal share screen: " + err);
+            }
+        }
+
+        function logoutSistem() {
+            localStorage.removeItem("status_login");
+            window.location.href = "index.html"; // Balik ke halaman login
+        }
+    </script>
+</body>
+</html>
