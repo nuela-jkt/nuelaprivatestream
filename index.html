@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Akses Streaming Pribadi</title>
+    <!-- Masukkan SDK Firebase Realtime Database -->
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b0f19; color: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
+        .login-box { width: 100%; max-width: 360px; padding: 30px; background: #111827; border-radius: 16px; border: 1px solid #1f2937; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3); text-align: center; }
+        h3 { font-size: 20px; margin-bottom: 5px; color: #3b82f6; }
+        p { font-size: 14px; color: #9ca3af; margin-bottom: 20px; }
+        input { width: 100%; padding: 12px; margin-bottom: 20px; background: #1f2937; border: 1px solid #4b5563; border-radius: 8px; color: white; text-align: center; font-size: 16px; }
+        input:focus { border-color: #3b82f6; outline: none; }
+        button { width: 100%; padding: 12px; background: #3b82f6; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 16px; transition: background 0.2s; }
+        button:hover { background: #2563eb; }
+        .info-kuota { font-size: 11px; color: #6b7280; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <div class="login-box">
+        <h3>Streaming Room</h3>
+        <p>Silakan masukkan token akses kamu</p>
+        <input type="password" id="tokenInput" placeholder="Masukkan Token...">
+        <button onclick="prosesLogin()">Masuk Halaman</button>
+        <div class="info-kuota" id="kuotaSisa">Mengecek kuota room...</div>
+    </div>
+
+    <script>
+        // CONFIGURASI FIREBASE (Ganti URL dengan kepunyaanmu dari Langkah 1)
+        const firebaseConfig = {
+            databaseURL: "https://stream-nuela-default-rtdb.asia-southeast1.firebasedatabase.app/"
+        };
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // DAFTAR TOKEN
+        const TOKEN_ADMIN = "admin_123*";      
+        const TOKEN_VIEWER = "JKT480102";       
+        const BATAS_MAKSIMAL = 50; // Batasan limit penggunaan token penonton
+        const PEER_ADMIN_ID = "ekin-private-screen-room-xyz123";
+
+        let kuotaSaatIni = 0;
+
+        // Monitor jumlah kuota terpakai secara real-time langsung dari Firebase
+        database.ref('kuota_terpakai').on('value', (snapshot) => {
+            kuotaSaatIni = snapshot.val() || 0;
+            document.getElementById("kuotaSisa").innerText = `Kuota terpakai: ${kuotaSaatIni}/${BATAS_MAKSIMAL} penonton`;
+        });
+
+        window.onload = function() {
+            const tokenTersimpan = localStorage.getItem("status_login");
+            if (tokenTersimpan === TOKEN_ADMIN || tokenTersimpan === TOKEN_VIEWER) {
+                window.location.href = "stream.html";
+            }
+        };
+
+        function prosesLogin() {
+            const inputUser = document.getElementById("tokenInput").value.trim();
+
+            if (inputUser === TOKEN_ADMIN) {
+                // Admin (Ekin) bebas masuk kapan saja tanpa memotong kuota
+                localStorage.setItem("status_login", inputUser);
+                window.location.href = "stream.html";
+            } else if (inputUser === TOKEN_VIEWER) {
+                // Jalankan pengecekan kuota di database untuk Penonton biasa
+                if (kuotaSaatIni >= BATAS_MAKSIMAL) {
+                    alert("Akses Ditolak! Token ini sudah mencapai batas maksimal penggunaan (50 Orang).");
+                } else {
+                    // Jika kuota masih ada, tambahkan angka terpakai di Firebase sebanyak +1
+                    database.ref('kuota_terpakai').set(kuotaSaatIni + 1)
+                    .then(() => {
+                        localStorage.setItem("status_login", inputUser);
+                        window.location.href = "stream.html";
+                    });
+                }
+            } else {
+                alert("Token Salah! Kamu tidak punya akses.");
+            }
+        }
+    </script>
+</body>
+</html>
