@@ -38,8 +38,8 @@
         const database = firebase.database();
 
         const TOKEN_ADMIN = "admin_123*";      
-        const TOKEN_VIEWER = "FJKT2026";       
-        const BATAS_MAKSIMAL = 3;
+        const TOKEN_VIEWER = "FJKT482026";       
+        const BATAS_MAKSIMAL = ;
 
         let kuotaSaatIni = 0;
 
@@ -70,7 +70,7 @@
                 window.location.href = "stream.html";
             } else if (inputUser === TOKEN_VIEWER) {
                 if (kuotaSaatIni >= BATAS_MAKSIMAL) {
-                    alert("Akses Ditolak! Token ini sudah mencapai batas maksimal penggunaan (50 Orang).");
+                    alert("Akses Ditolak! Token ini sudah mencapai batas maksimal penggunaan.");
                 } else {
                     database.ref('kuota_terpakai').set(kuotaSaatIni + 1)
                     .then(() => {
