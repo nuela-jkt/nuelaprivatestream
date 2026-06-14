@@ -40,7 +40,7 @@
 
     <script>
         const TOKEN_ADMIN = "admin_123*";
-        const TOKEN_VIEWER = "FJKT482026";
+        const TOKEN_VIEWER = "JKT48FJKT";
         const ROOM_ID = "ekin-private-screen-room-xyz123";
 
         firebase.initializeApp({
@@ -70,7 +70,12 @@
         let jumlahViewerAktif = 0;
 
         window.onload = function() {
-            const tokenTersimpan = localStorage.getItem("status_login");
+            const tokenTersimpan = sessionStorage.getItem("status_login");
+            const tokenLama = localStorage.getItem("status_login");
+
+            if (tokenLama) {
+                localStorage.removeItem("status_login");
+            }
 
             if (tokenTersimpan === TOKEN_ADMIN) {
                 role = "admin";
@@ -83,7 +88,7 @@
                 document.getElementById("streamTitle").innerText = "Streaming Layar Laptop";
                 setupViewer();
             } else {
-                localStorage.removeItem("status_login");
+                sessionStorage.removeItem("status_login");
                 window.location.href = "index.html";
             }
         };
@@ -149,7 +154,7 @@
             }
         }
 
-        function aturBitrateVideoPc(pc) {
+        function aturBitrateVideoPc(pc, maxBitrate) {
             let videoSender = null;
             const senders = pc.getSenders();
 
@@ -170,7 +175,9 @@
                 parameters.encodings = [{}];
             }
 
-            parameters.encodings[0].maxBitrate = 2500000;
+            parameters.degradationPreference = "balanced";
+            parameters.encodings[0].maxBitrate = maxBitrate;
+            parameters.encodings[0].maxFrameRate = 30;
 
             videoSender.setParameters(parameters).catch(err => {
                 console.log("Gagal atur bitrate video:", err);
@@ -272,7 +279,7 @@
             localStream.getTracks().forEach(track => {
                 pc.addTrack(track, localStream);
             });
-            aturBitrateVideoPc(pc);
+            aturBitrateVideoPc(pc, 1800000);
             aturBitrateAudioPc(pc);
 
             pc.onicecandidate = event => {
@@ -460,6 +467,7 @@
             }
 
             roomRef.child("admin").remove();
+            sessionStorage.removeItem("status_login");
             localStorage.removeItem("status_login");
             window.location.href = "index.html";
         }
