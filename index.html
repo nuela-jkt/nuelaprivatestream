@@ -37,14 +37,16 @@
         const database = firebase.database();
 
         const TOKEN_ADMIN = "admin_123*";
-        const TOKEN_VIEWER = "JKT48FJKT";
-        const BATAS_MAKSIMAL = 50;
+        const TOKEN_VIEWER = "JKT480102";
+        const BATAS_MAKSIMAL = 25;
 
         let kuotaSaatIni = 0;
 
         database.ref('kuota_terpakai').on('value', snapshot => {
             kuotaSaatIni = snapshot.val() || 0;
-    
+            document.getElementById("kuotaSisa").innerText = `Kuota terpakai: ${kuotaSaatIni}/${BATAS_MAKSIMAL} penonton`;
+        });
+
         window.onload = function() {
             const tokenTersimpan = sessionStorage.getItem("status_login");
             const tokenLama = localStorage.getItem("status_login");
