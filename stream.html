@@ -19,6 +19,7 @@
         .btn-logout { background: #374151; color: white; padding: 6px 15px; font-size: 12px; margin-top: 20px; border: 1px solid #4b5563; border-radius: 6px; cursor: pointer; }
         .btn-logout:hover { background: #ef4444; }
         .status-badge { display: inline-block; padding: 4px 12px; background: #ef4444; color: white; border-radius: 20px; font-size: 12px; font-weight: bold; margin-bottom: 10px; }
+        .viewer-count { display: inline-block; margin-top: 10px; padding: 6px 14px; background: rgba(59, 130, 246, 0.16); border: 1px solid #3b82f6; border-radius: 999px; color: #bfdbfe; font-size: 13px; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -27,6 +28,7 @@
         <div id="adminControls">
             <p style="color: #10b981; font-weight: bold; margin-bottom: 10px;">Mode Broadcaster Aktif</p>
             <button class="btn-stream" onclick="mulaiMembagikanLayar()">Mulai Share Screen Laptop</button>
+            <div id="viewerCount" class="viewer-count">Penonton: 0</div>
         </div>
         <h1 id="streamTitle">Menunggu Siaran...</h1>
         <div class="video-wrapper">
@@ -38,7 +40,7 @@
 
     <script>
         const TOKEN_ADMIN = "admin_123*";
-        const TOKEN_VIEWER = "FJKT2026";
+        const TOKEN_VIEWER = "FJKT482026";
         const ROOM_ID = "ekin-private-screen-room-xyz123";
 
         firebase.initializeApp({
@@ -65,6 +67,7 @@
         let adminConnections = {};
         let viewerId = null;
         let lastOfferSdp = "";
+        let jumlahViewerAktif = 0;
 
         window.onload = function() {
             const tokenTersimpan = localStorage.getItem("status_login");
@@ -88,6 +91,12 @@
         function setupAdmin() {
             roomRef.child("admin").set({ status: "online", updatedAt: Date.now() });
             roomRef.child("admin").onDisconnect().update({ status: "offline", updatedAt: Date.now() });
+
+            viewersRef.on("value", snapshot => {
+                const viewers = snapshot.val() || {};
+                jumlahViewerAktif = Object.keys(viewers).length;
+                updateTampilanJumlahViewer();
+            });
 
             viewersRef.on("child_added", snapshot => {
                 if (localStream) {
@@ -132,6 +141,42 @@
             });
         }
 
+        function updateTampilanJumlahViewer() {
+            const viewerCountElement = document.getElementById("viewerCount");
+
+            if (viewerCountElement) {
+                viewerCountElement.innerText = `Penonton: ${jumlahViewerAktif}`;
+            }
+        }
+
+        function aturBitrateVideoPc(pc) {
+            let videoSender = null;
+            const senders = pc.getSenders();
+
+            for (const sender of senders) {
+                if (sender.track && sender.track.kind === "video") {
+                    videoSender = sender;
+                    break;
+                }
+            }
+
+            if (!videoSender) {
+                return;
+            }
+
+            const parameters = videoSender.getParameters();
+
+            if (!parameters.encodings || parameters.encodings.length === 0) {
+                parameters.encodings = [{}];
+            }
+
+            parameters.encodings[0].maxBitrate = 2500000;
+
+            videoSender.setParameters(parameters).catch(err => {
+                console.log("Gagal atur bitrate video:", err);
+            });
+        }
+
         function aturBitrateAudioPc(pc) {
             let audioSender = null;
             const senders = pc.getSenders();
@@ -169,9 +214,9 @@
                 localStream = await navigator.mediaDevices.getDisplayMedia({
                     video: {
                         cursor: "always",
-                        frameRate: { ideal: 30, max: 60 },
-                        width: { ideal: 1920 },
-                        height: { ideal: 1080 }
+                        frameRate: { ideal: 30, max: 30 },
+                        width: { ideal: 1920, max: 1920 },
+                        height: { ideal: 1080, max: 1080 }
                     },
                     audio: {
                         echoCancellation: false,
@@ -227,6 +272,7 @@
             localStream.getTracks().forEach(track => {
                 pc.addTrack(track, localStream);
             });
+            aturBitrateVideoPc(pc);
             aturBitrateAudioPc(pc);
 
             pc.onicecandidate = event => {
