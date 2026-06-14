@@ -49,6 +49,17 @@
         let peer;
         let localStream;
 
+        // Konfigurasi STUN Server Google agar bisa tembus beda jaringan internet (Wi-Fi vs Paket Data)
+        const peerConfig = {
+            config: {
+                'iceServers': [
+                    { 'urls': 'stun:stun.l.google.com:19302' },
+                    { 'urls': 'stun:stun1.l.google.com:19302' },
+                    { 'urls': 'stun:stun2.l.google.com:19302' }
+                ]
+            }
+        };
+
         window.onload = function() {
             const tokenTersimpan = localStorage.getItem("status_login");
             
@@ -61,15 +72,13 @@
                 document.getElementById("adminControls").style.display = "block";
                 document.getElementById("streamTitle").innerText = "Panel Penyiaran Layar";
                 
-                // Mengaktifkan server PeerJS khusus admin
-                peer = new Peer(PEER_ADMIN_ID);
+                // Pasang konfigurasi STUN ke admin
+                peer = new Peer(PEER_ADMIN_ID, peerConfig);
                 
-                // Logika otomatis menjawab panggilan masuk dari penonton
                 peer.on('call', (call) => {
                     if (localStream) { 
                         call.answer(localStream); 
                     } else {
-                        // Antisipasi jika user masuk duluan sebelum admin pencet tombol hijau
                         call.answer(new MediaStream());
                     }
                 });
@@ -77,34 +86,31 @@
                 document.getElementById("adminControls").style.display = "none";
                 document.getElementById("streamTitle").innerText = "Streaming Layar Laptop";
 
-                // Menghubungkan viewer ke server PeerJS acak
-                peer = new Peer();
+                // Pasang konfigurasi STUN ke viewer
+                peer = new Peer(peerConfig);
                 peer.on('open', (id) => {
                     HubungkanKeAdmin();
                 });
 
                 peer.on('error', (err) => {
-                    console.log("Koneksi terputus, mencoba menyambung kembali...");
+                    console.log("Koneksi bermasalah, mencoba menyambung ulang...");
                     setTimeout(HubungkanKeAdmin, 2000);
                 });
             }
         };
 
         function HubungkanKeAdmin() {
-            // Viewer secara aktif "mengetuk pintu" room admin
             const call = peer.call(PEER_ADMIN_ID, new MediaStream());
             
             call.on('stream', (remoteStream) => {
                 const videoElement = document.getElementById("videoPlayer");
                 
-                // Validasi data stream video yang dikirim admin
                 if (remoteStream && remoteStream.getVideoTracks().length > 0) {
                     document.getElementById("streamTitle").innerText = "🔴 Live Streaming Sedang Berlangsung";
                     videoElement.srcObject = remoteStream;
                     
-                    // Eksekusi paksa play video
                     videoElement.play().catch(e => {
-                        console.log("Autoplay diblokir sistem, butuh interaksi user.");
+                        console.log("Autoplay ditahan browser.");
                     });
                 }
             });
@@ -112,7 +118,6 @@
 
         async function mulaiMembagikanLayar() {
             try {
-                // Mengambil tampilan layar laptop beserta audio internal sistem
                 localStream = await navigator.mediaDevices.getDisplayMedia({
                     video: { cursor: "always" },
                     audio: true
@@ -122,9 +127,9 @@
                 videoElement.srcObject = localStream;
                 videoElement.muted = true; 
 
-                alert("Layar berhasil dibagikan! Sinyal streaming sekarang aktif.");
+                alert("Layar berhasil dibagikan! Sinyal menembus server awan.");
             } catch (err) {
-                alert("Gagal memulai share screen: " + err);
+                alert("Gagal share screen: " + err);
             }
         }
 
