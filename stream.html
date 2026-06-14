@@ -61,15 +61,15 @@
                 document.getElementById("adminControls").style.display = "block";
                 document.getElementById("streamTitle").innerText = "Panel Penyiaran Layar";
                 
+                // Mengaktifkan server PeerJS khusus admin
                 peer = new Peer(PEER_ADMIN_ID);
                 
-                // Sisi Admin: Menjawab panggilan dari viewer kapanpun mereka masuk
+                // Logika otomatis menjawab panggilan masuk dari penonton
                 peer.on('call', (call) => {
                     if (localStream) { 
-                        // Jika admin sudah membagikan layar, langsung kirim datanya ke penonton baru
                         call.answer(localStream); 
                     } else {
-                        // Jika belum ada share screen, beri tahu lewat stream kosong agar koneksi tidak hang
+                        // Antisipasi jika user masuk duluan sebelum admin pencet tombol hijau
                         call.answer(new MediaStream());
                     }
                 });
@@ -77,32 +77,34 @@
                 document.getElementById("adminControls").style.display = "none";
                 document.getElementById("streamTitle").innerText = "Streaming Layar Laptop";
 
+                // Menghubungkan viewer ke server PeerJS acak
                 peer = new Peer();
                 peer.on('open', (id) => {
                     HubungkanKeAdmin();
                 });
 
                 peer.on('error', (err) => {
-                    console.log("Koneksi error, mencoba menyambung ulang...");
-                    setTimeout(HubungkanKeAdmin, 3000);
+                    console.log("Koneksi terputus, mencoba menyambung kembali...");
+                    setTimeout(HubungkanKeAdmin, 2000);
                 });
             }
         };
 
         function HubungkanKeAdmin() {
-            // Viewer mengirimkan MediaStream kosong sebagai tanda "memanggil" admin
+            // Viewer secara aktif "mengetuk pintu" room admin
             const call = peer.call(PEER_ADMIN_ID, new MediaStream());
             
             call.on('stream', (remoteStream) => {
                 const videoElement = document.getElementById("videoPlayer");
                 
-                // Pastikan track video dari admin benar-benar ada dan aktif
+                // Validasi data stream video yang dikirim admin
                 if (remoteStream && remoteStream.getVideoTracks().length > 0) {
                     document.getElementById("streamTitle").innerText = "🔴 Live Streaming Sedang Berlangsung";
                     videoElement.srcObject = remoteStream;
                     
+                    // Eksekusi paksa play video
                     videoElement.play().catch(e => {
-                        console.log("Autoplay ditahan browser mobile.");
+                        console.log("Autoplay diblokir sistem, butuh interaksi user.");
                     });
                 }
             });
@@ -110,6 +112,7 @@
 
         async function mulaiMembagikanLayar() {
             try {
+                // Mengambil tampilan layar laptop beserta audio internal sistem
                 localStream = await navigator.mediaDevices.getDisplayMedia({
                     video: { cursor: "always" },
                     audio: true
@@ -119,9 +122,9 @@
                 videoElement.srcObject = localStream;
                 videoElement.muted = true; 
 
-                alert("Layar berhasil dibagikan! Sisi admin siap memancarkan sinyal.");
+                alert("Layar berhasil dibagikan! Sinyal streaming sekarang aktif.");
             } catch (err) {
-                alert("Gagal share screen: " + err);
+                alert("Gagal memulai share screen: " + err);
             }
         }
 
