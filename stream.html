@@ -89,17 +89,17 @@
             roomRef.child("admin").set({ status: "online", updatedAt: Date.now() });
             roomRef.child("admin").onDisconnect().update({ status: "offline", updatedAt: Date.now() });
 
-            viewersRef.on("child_added", (snapshot) => {
+            viewersRef.on("child_added", snapshot => {
                 if (localStream) {
                     buatKoneksiAdminKeViewer(snapshot.key);
                 }
             });
 
-            viewersRef.on("child_removed", (snapshot) => {
+            viewersRef.on("child_removed", snapshot => {
                 tutupKoneksiAdmin(snapshot.key);
             });
 
-            viewersRef.on("child_changed", (snapshot) => {
+            viewersRef.on("child_changed", snapshot => {
                 if (localStream) {
                     buatKoneksiAdminKeViewer(snapshot.key);
                 }
@@ -120,7 +120,7 @@
             });
             viewerRef.onDisconnect().remove();
 
-            viewerRef.child("offer").on("value", async (snapshot) => {
+            viewerRef.child("offer").on("value", async snapshot => {
                 const offer = snapshot.val();
 
                 if (!offer || offer.sdp === lastOfferSdp) {
@@ -132,6 +132,34 @@
             });
         }
 
+        function aturBitrateAudioPc(pc) {
+            let audioSender = null;
+            const senders = pc.getSenders();
+
+            for (const sender of senders) {
+                if (sender.track && sender.track.kind === "audio") {
+                    audioSender = sender;
+                    break;
+                }
+            }
+
+            if (!audioSender) {
+                return;
+            }
+
+            const parameters = audioSender.getParameters();
+
+            if (!parameters.encodings || parameters.encodings.length === 0) {
+                parameters.encodings = [{}];
+            }
+
+            parameters.encodings[0].maxBitrate = 128000;
+
+            audioSender.setParameters(parameters).catch(err => {
+                console.log("Gagal atur bitrate audio:", err);
+            });
+        }
+
         async function mulaiMembagikanLayar() {
             try {
                 if (localStream) {
@@ -139,8 +167,20 @@
                 }
 
                 localStream = await navigator.mediaDevices.getDisplayMedia({
-                    video: { cursor: "always" },
-                    audio: true
+                    video: {
+                        cursor: "always",
+                        frameRate: { ideal: 30, max: 60 },
+                        width: { ideal: 1920 },
+                        height: { ideal: 1080 }
+                    },
+                    audio: {
+                        echoCancellation: false,
+                        noiseSuppression: false,
+                        autoGainControl: false,
+                        channelCount: { ideal: 2 },
+                        sampleRate: { ideal: 48000 },
+                        sampleSize: { ideal: 16 }
+                    }
                 });
 
                 if (!localStream.getVideoTracks()[0]) {
@@ -184,9 +224,12 @@
             const pc = new RTCPeerConnection({ iceServers });
             adminConnections[idViewer] = pc;
 
-            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+            localStream.getTracks().forEach(track => {
+                pc.addTrack(track, localStream);
+            });
+            aturBitrateAudioPc(pc);
 
-            pc.onicecandidate = (event) => {
+            pc.onicecandidate = event => {
                 if (event.candidate) {
                     viewersRef.child(`${idViewer}/adminCandidates`).push(event.candidate.toJSON());
                 }
@@ -196,7 +239,7 @@
                 document.getElementById("streamTitle").innerText = `Koneksi viewer ${idViewer}: ${pc.connectionState}`;
             };
 
-            viewersRef.child(`${idViewer}/answer`).on("value", async (snapshot) => {
+            viewersRef.child(`${idViewer}/answer`).on("value", async snapshot => {
                 const answer = snapshot.val();
 
                 if (!answer || pc.remoteDescription && pc.remoteDescription.type === "answer") {
@@ -210,7 +253,7 @@
                 }
             });
 
-            viewersRef.child(`${idViewer}/viewerCandidates`).on("child_added", (snapshot) => {
+            viewersRef.child(`${idViewer}/viewerCandidates`).on("child_added", snapshot => {
                 const candidate = snapshot.val();
 
                 if (candidate) {
@@ -237,11 +280,11 @@
 
             peerConnection = new RTCPeerConnection({ iceServers });
 
-            peerConnection.ontrack = (event) => {
+            peerConnection.ontrack = event => {
                 tampilkanRemoteStream(event.streams[0]);
             };
 
-            peerConnection.onicecandidate = (event) => {
+            peerConnection.onicecandidate = event => {
                 if (event.candidate) {
                     viewersRef.child(`${viewerId}/viewerCandidates`).push(event.candidate.toJSON());
                 }
@@ -259,7 +302,7 @@
                 }
             };
 
-            viewersRef.child(`${viewerId}/adminCandidates`).on("child_added", (snapshot) => {
+            viewersRef.child(`${viewerId}/adminCandidates`).on("child_added", snapshot => {
                 const candidate = snapshot.val();
 
                 if (candidate) {
