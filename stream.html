@@ -48,7 +48,6 @@
 
         let peer;
         let localStream;
-        let daftarKoneksiViewer = [];
 
         window.onload = function() {
             const tokenTersimpan = localStorage.getItem("status_login");
@@ -64,11 +63,13 @@
                 
                 peer = new Peer(PEER_ADMIN_ID);
                 
+                // Sisi Admin: Menjawab panggilan dari viewer kapanpun mereka masuk
                 peer.on('call', (call) => {
-                    daftarKoneksiViewer.push(call);
                     if (localStream) { 
+                        // Jika admin sudah membagikan layar, langsung kirim datanya ke penonton baru
                         call.answer(localStream); 
                     } else {
+                        // Jika belum ada share screen, beri tahu lewat stream kosong agar koneksi tidak hang
                         call.answer(new MediaStream());
                     }
                 });
@@ -89,17 +90,19 @@
         };
 
         function HubungkanKeAdmin() {
+            // Viewer mengirimkan MediaStream kosong sebagai tanda "memanggil" admin
             const call = peer.call(PEER_ADMIN_ID, new MediaStream());
             
             call.on('stream', (remoteStream) => {
                 const videoElement = document.getElementById("videoPlayer");
                 
+                // Pastikan track video dari admin benar-benar ada dan aktif
                 if (remoteStream && remoteStream.getVideoTracks().length > 0) {
                     document.getElementById("streamTitle").innerText = "🔴 Live Streaming Sedang Berlangsung";
                     videoElement.srcObject = remoteStream;
                     
                     videoElement.play().catch(e => {
-                        console.log("Autoplay ditahan, menunggu ketukan user.");
+                        console.log("Autoplay ditahan browser mobile.");
                     });
                 }
             });
@@ -116,11 +119,7 @@
                 videoElement.srcObject = localStream;
                 videoElement.muted = true; 
 
-                if(daftarKoneksiViewer.length > 0) {
-                    window.location.reload(); 
-                }
-
-                alert("Layar berhasil dibagikan! Silakan suruh penonton buka/refresh link di HP mereka.");
+                alert("Layar berhasil dibagikan! Sisi admin siap memancarkan sinyal.");
             } catch (err) {
                 alert("Gagal share screen: " + err);
             }
