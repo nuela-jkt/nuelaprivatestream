@@ -46,8 +46,10 @@
         const TOKEN_VIEWER = "JKT480102";       
         const PEER_ADMIN_ID = "ekin-private-screen-room-xyz123"; 
 
-        let peer;
-        let localStream;
+        let peer = null;
+        let localStream = null;
+        let currentCall = null;
+        let reconnectTimeout = null;
 
         const peerConfig = {
             config: {
@@ -60,7 +62,6 @@
         };
 
         window.onload = function() {
-            // Menggunakan sessionStorage
             const tokenTersimpan = sessionStorage.getItem("status_login");
             
             if (!tokenTersimpan) {
@@ -75,7 +76,7 @@
                 peer = new Peer(PEER_ADMIN_ID, peerConfig);
                 
                 peer.on('call', (call) => {
-                    if (localStream) { 
+                    if (localStream && localStream.active) { 
                         call.answer(localStream); 
                     } else {
                         call.answer(new MediaStream());
@@ -91,31 +92,67 @@
                 });
 
                 peer.on('error', (err) => {
-                    console.log("Koneksi bermasalah, mencoba menyambung ulang...");
-                    setTimeout(HubungkanKeAdmin, 2000);
+                    console.log("Koneksi bermasalah, menjadwalkan ulang...");
+                    SistemReconnectViewer();
                 });
             }
         };
 
         function HubungkanKeAdmin() {
-            const call = peer.call(PEER_ADMIN_ID, new MediaStream());
+            // Bersihkan sisa call lama agar tidak duplikat
+            if (currentCall) {
+                currentCall.close();
+            }
+
+            // Viewer mengirimkan MediaStream kosong untuk memicu handshake
+            currentCall = peer.call(PEER_ADMIN_ID, new MediaStream());
             
-            call.on('stream', (remoteStream) => {
+            currentCall.on('stream', (remoteStream) => {
                 const videoElement = document.getElementById("videoPlayer");
                 
+                // Perbaikan Validasi Track Media (Mengatasi bug ontrack & stale tracks)
                 if (remoteStream && remoteStream.getVideoTracks().length > 0) {
-                    document.getElementById("streamTitle").innerText = "🔴 Live Streaming Sedang Berlangsung";
-                    videoElement.srcObject = remoteStream;
+                    const videoTrack = remoteStream.getVideoTracks()[0];
                     
-                    videoElement.play().catch(e => {
-                        console.log("Autoplay ditahan browser.");
-                    });
+                    if (videoTrack.readyState === 'live') {
+                        document.getElementById("streamTitle").innerText = "🔴 Live Streaming Sedang Berlangsung";
+                        
+                        // Stop track lama yang menempel di element video sebelum ganti yang baru
+                        if (videoElement.srcObject && videoElement.srcObject !== remoteStream) {
+                            let oldStream = videoElement.srcObject;
+                            oldStream.getTracks().forEach(track => track.stop());
+                        }
+
+                        videoElement.srcObject = remoteStream;
+                        videoElement.play().catch(e => console.log("Autoplay ditahan browser."));
+                    }
                 }
             });
+
+            currentCall.on('close', () => {
+                SistemReconnectViewer();
+            });
+        }
+
+        // Mencegah timer tumpang tindih (Overlap Reconnect Timers)
+        function SistemReconnectViewer() {
+            if (reconnectTimeout) {
+                clearTimeout(reconnectTimeout);
+            }
+            reconnectTimeout = setTimeout(() => {
+                if (peer && !peer.destroyed) {
+                    HubungkanKeAdmin();
+                }
+            }, 3000); // Coba lagi setiap 3 detik dengan aman
         }
 
         async function mulaiMembagikanLayar() {
             try {
+                // Hentikan stream lama jika admin melakukan restart share screen
+                if (localStream) {
+                    localStream.getTracks().forEach(track => track.stop());
+                }
+
                 localStream = await navigator.mediaDevices.getDisplayMedia({
                     video: { cursor: "always" },
                     audio: true
@@ -125,14 +162,25 @@
                 videoElement.srcObject = localStream;
                 videoElement.muted = true; 
 
-                alert("Layar berhasil dibagikan!");
+                // Deteksi jika admin mengklik tombol "Stop Sharing" bawaan browser browser
+                localStream.getVideoTracks()[0].onended = function () {
+                    localStream.getTracks().forEach(track => track.stop());
+                    localStream = null; // Rekonsiliasi status stream agar kembali kosong
+                    document.getElementById("streamTitle").innerText = "Siaran Dihentikan Admin";
+                };
+
+                alert("Layar berhasil dibagikan! Silakan buka atau refresh halaman di HP.");
             } catch (err) {
                 alert("Gagal share screen: " + err);
             }
         }
 
         function logoutSistem() {
-            // Menggunakan sessionStorage
+            if (reconnectTimeout) clearTimeout(reconnectTimeout);
+            if (currentCall) currentCall.close();
+            if (localStream) localStream.getTracks().forEach(track => track.stop());
+            if (peer) peer.destroy();
+
             sessionStorage.removeItem("status_login");
             window.location.href = "index.html";
         }
