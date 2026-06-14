@@ -33,13 +33,13 @@
         const firebaseConfig = {
             databaseURL: "https://stream-nuela-default-rtdb.asia-southeast1.firebasedatabase.app/"
         };
+
         firebase.initializeApp(firebaseConfig);
         const database = firebase.database();
 
         const TOKEN_ADMIN = "admin_123*";      
         const TOKEN_VIEWER = "JKT480102";       
-        const BATAS_MAKSIMAL = 50; 
-        const PEER_ADMIN_ID = "ekin-private-screen-room-xyz123";
+        const BATAS_MAKSIMAL = 50;
 
         let kuotaSaatIni = 0;
 
@@ -49,10 +49,16 @@
         });
 
         window.onload = function() {
-            // Menggunakan sessionStorage agar otomatis terhapus saat tab ditutup
-            const tokenTersimpan = sessionStorage.getItem("status_login");
+            const tokenTersimpan = localStorage.getItem("status_login");
+
             if (tokenTersimpan === TOKEN_ADMIN || tokenTersimpan === TOKEN_VIEWER) {
                 window.location.href = "stream.html";
+                return;
+            }
+
+            if (tokenTersimpan) {
+                localStorage.removeItem("status_login");
+                document.getElementById("kuotaSisa").innerText = "Token tersimpan tidak valid, silakan login ulang.";
             }
         };
 
@@ -60,15 +66,15 @@
             const inputUser = document.getElementById("tokenInput").value.trim();
 
             if (inputUser === TOKEN_ADMIN) {
-                sessionStorage.setItem("status_login", inputUser);
+                localStorage.setItem("status_login", inputUser);
                 window.location.href = "stream.html";
             } else if (inputUser === TOKEN_VIEWER) {
                 if (kuotaSaatIni >= BATAS_MAKSIMAL) {
-                    alert("Akses Ditolak! Token ini sudah mencapai batas maksimal penggunaan.");
+                    alert("Akses Ditolak! Token ini sudah mencapai batas maksimal penggunaan (50 Orang).");
                 } else {
                     database.ref('kuota_terpakai').set(kuotaSaatIni + 1)
                     .then(() => {
-                        sessionStorage.setItem("status_login", inputUser);
+                        localStorage.setItem("status_login", inputUser);
                         window.location.href = "stream.html";
                     });
                 }
