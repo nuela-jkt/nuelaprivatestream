@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Live Streaming Room</title>
-    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.0/firebase-database.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0b0f19; color: #f3f4f6; display: flex; justify-content: center; align-items: center; min-height: 100vh; padding: 20px; }
@@ -12,143 +13,127 @@
         h1 { font-size: 24px; margin-bottom: 20px; color: #3b82f6; }
         .video-wrapper { position: relative; background: #000; border-radius: 12px; overflow: hidden; aspect-ratio: 16/9; margin-top: 20px; border: 1px solid #374151; }
         video { width: 100%; height: 100%; object-fit: contain; }
-        
         #adminControls { display: none; margin-bottom: 20px; padding: 15px; background: rgba(16, 185, 129, 0.1); border: 1px dashed #10b981; border-radius: 8px; }
         .btn-stream { background: #10b981; color: white; padding: 10px 25px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; }
         .btn-stream:hover { background: #059669; }
-        
         .btn-logout { background: #374151; color: white; padding: 6px 15px; font-size: 12px; margin-top: 20px; border: 1px solid #4b5563; border-radius: 6px; cursor: pointer; }
         .btn-logout:hover { background: #ef4444; }
         .status-badge { display: inline-block; padding: 4px 12px; background: #ef4444; color: white; border-radius: 20px; font-size: 12px; font-weight: bold; margin-bottom: 10px; }
     </style>
 </head>
 <body>
-
     <div class="container">
         <span class="status-badge">LIVE STREAM</span>
-        
         <div id="adminControls">
             <p style="color: #10b981; font-weight: bold; margin-bottom: 10px;">Mode Broadcaster Aktif</p>
             <button class="btn-stream" onclick="mulaiMembagikanLayar()">Mulai Share Screen Laptop</button>
         </div>
-
         <h1 id="streamTitle">Menunggu Siaran...</h1>
         <div class="video-wrapper">
             <video id="videoPlayer" autoplay playsinline muted controls></video>
         </div>
-
         <br>
         <button class="btn-logout" onclick="logoutSistem()">Keluar / Ganti Token</button>
     </div>
 
     <script>
-        const TOKEN_ADMIN = "admin_123*";      
-        const TOKEN_VIEWER = "JKT480102";       
-        const PEER_ADMIN_ID = "ekin-private-screen-room-xyz123"; 
+        const TOKEN_ADMIN = "admin_123*";
+        const TOKEN_VIEWER = "JKT480102";
+        const ROOM_ID = "ekin-private-screen-room-xyz123";
 
-        let peer = null;
+        firebase.initializeApp({
+            databaseURL: "https://stream-nuela-default-rtdb.asia-southeast1.firebasedatabase.app/"
+        });
+
+        const database = firebase.database();
+        const roomRef = database.ref(`rooms/${ROOM_ID}`);
+        const viewersRef = roomRef.child("viewers");
+
+        const iceServers = [
+            { urls: "stun:stun.l.google.com:19302" },
+            { urls: "stun:stun1.l.google.com:19302" },
+            { urls: "stun:stun2.l.google.com:19302" },
+            { urls: "turn:openrelay.metered.ca:80", username: "openrelay", credential: "openrelay" },
+            { urls: "turn:openrelay.metered.ca:443?transport=tcp", username: "openrelay", credential: "openrelay" }
+        ];
+
+        let role = null;
+        let peerConnection = null;
         let localStream = null;
-        let currentCall = null;
-        let reconnectTimeout = null;
-
-        const peerConfig = {
-            config: {
-                'iceServers': [
-                    { 'urls': 'stun:stun.l.google.com:19302' },
-                    { 'urls': 'stun:stun1.l.google.com:19302' },
-                    { 'urls': 'stun:stun2.l.google.com:19302' }
-                ]
-            }
-        };
+        let remoteStreamAktif = null;
+        let sedangMenghentikanStream = false;
+        let adminConnections = {};
+        let viewerId = null;
+        let lastOfferSdp = "";
 
         window.onload = function() {
-            const tokenTersimpan = sessionStorage.getItem("status_login");
-            
-            if (!tokenTersimpan) {
-                window.location.href = "index.html";
-                return;
-            }
+            const tokenTersimpan = localStorage.getItem("status_login");
 
             if (tokenTersimpan === TOKEN_ADMIN) {
+                role = "admin";
                 document.getElementById("adminControls").style.display = "block";
                 document.getElementById("streamTitle").innerText = "Panel Penyiaran Layar";
-                
-                peer = new Peer(PEER_ADMIN_ID, peerConfig);
-                
-                peer.on('call', (call) => {
-                    if (localStream && localStream.active) { 
-                        call.answer(localStream); 
-                    } else {
-                        call.answer(new MediaStream());
-                    }
-                });
+                setupAdmin();
             } else if (tokenTersimpan === TOKEN_VIEWER) {
+                role = "viewer";
                 document.getElementById("adminControls").style.display = "none";
                 document.getElementById("streamTitle").innerText = "Streaming Layar Laptop";
-
-                peer = new Peer(peerConfig);
-                peer.on('open', (id) => {
-                    HubungkanKeAdmin();
-                });
-
-                peer.on('error', (err) => {
-                    console.log("Koneksi bermasalah, menjadwalkan ulang...");
-                    SistemReconnectViewer();
-                });
+                setupViewer();
+            } else {
+                localStorage.removeItem("status_login");
+                window.location.href = "index.html";
             }
         };
 
-        function HubungkanKeAdmin() {
-            // Bersihkan sisa call lama agar tidak duplikat
-            if (currentCall) {
-                currentCall.close();
-            }
+        function setupAdmin() {
+            roomRef.child("admin").set({ status: "online", updatedAt: Date.now() });
+            roomRef.child("admin").onDisconnect().update({ status: "offline", updatedAt: Date.now() });
 
-            // Viewer mengirimkan MediaStream kosong untuk memicu handshake
-            currentCall = peer.call(PEER_ADMIN_ID, new MediaStream());
-            
-            currentCall.on('stream', (remoteStream) => {
-                const videoElement = document.getElementById("videoPlayer");
-                
-                // Perbaikan Validasi Track Media (Mengatasi bug ontrack & stale tracks)
-                if (remoteStream && remoteStream.getVideoTracks().length > 0) {
-                    const videoTrack = remoteStream.getVideoTracks()[0];
-                    
-                    if (videoTrack.readyState === 'live') {
-                        document.getElementById("streamTitle").innerText = "🔴 Live Streaming Sedang Berlangsung";
-                        
-                        // Stop track lama yang menempel di element video sebelum ganti yang baru
-                        if (videoElement.srcObject && videoElement.srcObject !== remoteStream) {
-                            let oldStream = videoElement.srcObject;
-                            oldStream.getTracks().forEach(track => track.stop());
-                        }
-
-                        videoElement.srcObject = remoteStream;
-                        videoElement.play().catch(e => console.log("Autoplay ditahan browser."));
-                    }
+            viewersRef.on("child_added", (snapshot) => {
+                if (localStream) {
+                    buatKoneksiAdminKeViewer(snapshot.key);
                 }
             });
 
-            currentCall.on('close', () => {
-                SistemReconnectViewer();
+            viewersRef.on("child_removed", (snapshot) => {
+                tutupKoneksiAdmin(snapshot.key);
+            });
+
+            viewersRef.on("child_changed", (snapshot) => {
+                if (localStream) {
+                    buatKoneksiAdminKeViewer(snapshot.key);
+                }
             });
         }
 
-        // Mencegah timer tumpang tindih (Overlap Reconnect Timers)
-        function SistemReconnectViewer() {
-            if (reconnectTimeout) {
-                clearTimeout(reconnectTimeout);
-            }
-            reconnectTimeout = setTimeout(() => {
-                if (peer && !peer.destroyed) {
-                    HubungkanKeAdmin();
+        function setupViewer() {
+            viewerId = `viewer_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+            const viewerRef = viewersRef.child(viewerId);
+
+            viewerRef.update({
+                status: "online",
+                updatedAt: Date.now(),
+                offer: null,
+                answer: null,
+                adminCandidates: null,
+                viewerCandidates: null
+            });
+            viewerRef.onDisconnect().remove();
+
+            viewerRef.child("offer").on("value", async (snapshot) => {
+                const offer = snapshot.val();
+
+                if (!offer || offer.sdp === lastOfferSdp) {
+                    return;
                 }
-            }, 3000); // Coba lagi setiap 3 detik dengan aman
+
+                lastOfferSdp = offer.sdp;
+                await buatJawabanViewer(offer);
+            });
         }
 
         async function mulaiMembagikanLayar() {
             try {
-                // Hentikan stream lama jika admin melakukan restart share screen
                 if (localStream) {
                     localStream.getTracks().forEach(track => track.stop());
                 }
@@ -157,31 +142,236 @@
                     video: { cursor: "always" },
                     audio: true
                 });
-                
+
+                if (!localStream.getVideoTracks()[0]) {
+                    alert("Gagal share screen: tidak ada video track.");
+                    return;
+                }
+
                 const videoElement = document.getElementById("videoPlayer");
                 videoElement.srcObject = localStream;
-                videoElement.muted = true; 
+                videoElement.muted = true;
 
-                // Deteksi jika admin mengklik tombol "Stop Sharing" bawaan browser browser
-                localStream.getVideoTracks()[0].onended = function () {
-                    localStream.getTracks().forEach(track => track.stop());
-                    localStream = null; // Rekonsiliasi status stream agar kembali kosong
-                    document.getElementById("streamTitle").innerText = "Siaran Dihentikan Admin";
-                };
+                localStream.getTracks().forEach(track => {
+                    track.addEventListener("ended", hentikanStreamAdmin);
+                });
 
-                alert("Layar berhasil dibagikan! Silakan buka atau refresh halaman di HP.");
+                const snapshot = await viewersRef.once("value");
+                const viewers = snapshot.val() || {};
+                Object.keys(viewers).forEach(viewerKey => buatKoneksiAdminKeViewer(viewerKey));
+
+                alert("Layar berhasil dibagikan. Viewer akan tersambung otomatis.");
             } catch (err) {
                 alert("Gagal share screen: " + err);
             }
         }
 
-        function logoutSistem() {
-            if (reconnectTimeout) clearTimeout(reconnectTimeout);
-            if (currentCall) currentCall.close();
-            if (localStream) localStream.getTracks().forEach(track => track.stop());
-            if (peer) peer.destroy();
+        async function buatKoneksiAdminKeViewer(idViewer) {
+            if (!localStream || !idViewer) {
+                return;
+            }
 
-            sessionStorage.removeItem("status_login");
+            if (adminConnections[idViewer]) {
+                const state = adminConnections[idViewer].connectionState;
+
+                if (state !== "failed" && state !== "disconnected" && state !== "closed") {
+                    return;
+                }
+
+                tutupKoneksiAdmin(idViewer);
+            }
+
+            const pc = new RTCPeerConnection({ iceServers });
+            adminConnections[idViewer] = pc;
+
+            localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+
+            pc.onicecandidate = (event) => {
+                if (event.candidate) {
+                    viewersRef.child(`${idViewer}/adminCandidates`).push(event.candidate.toJSON());
+                }
+            };
+
+            pc.onconnectionstatechange = () => {
+                document.getElementById("streamTitle").innerText = `Koneksi viewer ${idViewer}: ${pc.connectionState}`;
+            };
+
+            viewersRef.child(`${idViewer}/answer`).on("value", async (snapshot) => {
+                const answer = snapshot.val();
+
+                if (!answer || pc.remoteDescription && pc.remoteDescription.type === "answer") {
+                    return;
+                }
+
+                try {
+                    await pc.setRemoteDescription(new RTCSessionDescription(answer));
+                } catch (err) {
+                    console.log("Gagal pasang answer viewer:", err);
+                }
+            });
+
+            viewersRef.child(`${idViewer}/viewerCandidates`).on("child_added", (snapshot) => {
+                const candidate = snapshot.val();
+
+                if (candidate) {
+                    pc.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+                }
+            });
+
+            viewersRef.child(`${idViewer}/offer`).remove();
+            viewersRef.child(`${idViewer}/answer`).remove();
+            viewersRef.child(`${idViewer}/adminCandidates`).remove();
+            viewersRef.child(`${idViewer}/viewerCandidates`).remove();
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            viewersRef.child(`${idViewer}/offer`).set({ type: offer.type, sdp: offer.sdp });
+        }
+
+        async function buatJawabanViewer(offer) {
+            if (peerConnection) {
+                peerConnection.close();
+            }
+
+            viewersRef.child(`${viewerId}/answer`).remove();
+
+            peerConnection = new RTCPeerConnection({ iceServers });
+
+            peerConnection.ontrack = (event) => {
+                tampilkanRemoteStream(event.streams[0]);
+            };
+
+            peerConnection.onicecandidate = (event) => {
+                if (event.candidate) {
+                    viewersRef.child(`${viewerId}/viewerCandidates`).push(event.candidate.toJSON());
+                }
+            };
+
+            peerConnection.onconnectionstatechange = () => {
+                if (peerConnection.connectionState === "failed" || peerConnection.connectionState === "disconnected") {
+                    document.getElementById("streamTitle").innerText = "Koneksi terputus, mencoba menyambung ulang...";
+                    viewersRef.child(`${viewerId}`).update({
+                        status: "retry",
+                        updatedAt: Date.now(),
+                        answer: null,
+                        viewerCandidates: null
+                    });
+                }
+            };
+
+            viewersRef.child(`${viewerId}/adminCandidates`).on("child_added", (snapshot) => {
+                const candidate = snapshot.val();
+
+                if (candidate) {
+                    peerConnection.addIceCandidate(new RTCIceCandidate(candidate)).catch(() => {});
+                }
+            });
+
+            try {
+                await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+            } catch (err) {
+                document.getElementById("streamTitle").innerText = "Gagal menerima siaran, mencoba lagi...";
+                viewersRef.child(`${viewerId}`).update({
+                    status: "retry",
+                    updatedAt: Date.now(),
+                    answer: null,
+                    viewerCandidates: null
+                });
+                return;
+            }
+
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+            viewersRef.child(`${viewerId}/answer`).set({ type: answer.type, sdp: answer.sdp });
+        }
+
+        function tampilkanRemoteStream(stream) {
+            const videoElement = document.getElementById("videoPlayer");
+
+            if (remoteStreamAktif && remoteStreamAktif !== stream) {
+                remoteStreamAktif.getTracks().forEach(track => track.stop());
+            }
+
+            remoteStreamAktif = stream;
+            videoElement.srcObject = stream;
+
+            if (stream.getVideoTracks().length > 0) {
+                document.getElementById("streamTitle").innerText = "🔴 Live Streaming Sedang Berlangsung";
+            } else {
+                document.getElementById("streamTitle").innerText = "Menunggu admin mulai share screen...";
+            }
+
+            stream.addEventListener("addtrack", () => {
+                if (stream.getVideoTracks().length > 0) {
+                    document.getElementById("streamTitle").innerText = "🔴 Live Streaming Sedang Berlangsung";
+                    videoElement.srcObject = stream;
+                }
+            });
+
+            stream.addEventListener("removetrack", () => {
+                if (stream.getVideoTracks().length === 0) {
+                    document.getElementById("streamTitle").innerText = "Share screen admin berhenti, mencoba menyambung ulang...";
+                }
+            });
+
+            videoElement.play().catch(() => {});
+            videoElement.addEventListener("click", () => {
+                videoElement.play().catch(() => {});
+            });
+        }
+
+        function hentikanStreamAdmin() {
+            if (sedangMenghentikanStream) {
+                return;
+            }
+
+            sedangMenghentikanStream = true;
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+
+            localStream = null;
+            Object.keys(adminConnections).forEach(idViewer => tutupKoneksiAdmin(idViewer));
+            document.getElementById("streamTitle").innerText = "Share screen berhenti";
+            sedangMenghentikanStream = false;
+        }
+
+        function tutupKoneksiAdmin(idViewer) {
+            if (adminConnections[idViewer]) {
+                adminConnections[idViewer].close();
+                delete adminConnections[idViewer];
+            }
+
+            viewersRef.child(`${idViewer}/offer`).remove();
+            viewersRef.child(`${idViewer}/answer`).remove();
+            viewersRef.child(`${idViewer}/adminCandidates`).remove();
+            viewersRef.child(`${idViewer}/viewerCandidates`).remove();
+        }
+
+        function logoutSistem() {
+            sedangMenghentikanStream = true;
+
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+            }
+
+            if (remoteStreamAktif) {
+                remoteStreamAktif.getTracks().forEach(track => track.stop());
+            }
+
+            Object.keys(adminConnections).forEach(idViewer => tutupKoneksiAdmin(idViewer));
+
+            if (peerConnection) {
+                peerConnection.close();
+            }
+
+            if (viewerId) {
+                viewersRef.child(viewerId).remove();
+            }
+
+            roomRef.child("admin").remove();
+            localStorage.removeItem("status_login");
             window.location.href = "index.html";
         }
     </script>
